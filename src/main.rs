@@ -8,6 +8,7 @@ extern crate serenity;
 extern crate tokio;
 
 use crate::models::{JsonResponse, JsonStock, JsonStocks, NewStock, NewStocks, Stock, Stocks};
+use anyhow::Context;
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use dotenv::dotenv;
@@ -183,7 +184,7 @@ struct Handler;
 impl EventHandler for Handler {}
 
 pub async fn get_discord(token: String) -> anyhow::Result<Client> {
-    let mut client = Client::builder(token).await?;
+    let mut client = Client::builder(token).event_handler(Handler).await?;
 
     let _ = client.start();
 
@@ -204,6 +205,11 @@ async fn main() -> anyhow::Result<()> {
 
     let discord_channel = env::var("DISCORD_CHANNEL")?.parse::<u64>()?;
     let channel = ChannelId(discord_channel);
+
+    channel
+        .say(discord_http.clone(), "Starting...")
+        .await
+        .context("Announcing bot start")?;
 
     let _ = stocks(
         &pool,
