@@ -12,7 +12,12 @@ use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use dotenv::dotenv;
 use r2d2::Pool;
+use serenity::client::EventHandler;
+use serenity::http::Http;
+use serenity::model::id::ChannelId;
+use serenity::Client;
 use std::env;
+use std::sync::Arc;
 
 mod models;
 mod schema;
@@ -63,6 +68,8 @@ pub fn update_stocks(
 pub async fn stocks(
     pool: &Pool<ConnectionManager<PgConnection>>,
     s: &str,
+    http: Arc<Http>,
+    channel: &ChannelId,
 ) -> anyhow::Result<(Stocks, Vec<Stock>)> {
     let stocks = scan_stocks(s).await?;
 
@@ -73,7 +80,7 @@ pub async fn stocks(
 
     let mut stock_entities: Vec<Stock> = vec![];
     for st in stocks.stocks {
-        stock_entities.push(stock(pool, &stocks_entity, &st)?);
+        stock_entities.push(stock(pool, &stocks_entity, &st, http.clone(), &channel).await?);
     }
 
     Ok((stocks_entity, stock_entities))
@@ -132,32 +139,77 @@ pub fn update_stock(
     Ok(updated_stock)
 }
 
-pub fn stock(
+pub fn is_stock_same(stock: &Stock, json: &JsonStock) -> bool {
+    stock.availability == json.availability && stock.type_threshold == json.type_threshold
+}
+
+pub async fn stock(
     pool: &Pool<ConnectionManager<PgConnection>>,
     stocks: &Stocks,
     json: &JsonStock,
+    http: Arc<Http>,
+    channel: &ChannelId,
 ) -> anyhow::Result<Stock> {
     let stock_entity = match find_stock(pool, stocks, json)? {
         None => create_stock(pool, stocks, json)?,
-        Some(stock) => update_stock(pool, &stock, json)?,
+        Some(stock) => {
+            if !is_stock_same(&stock, json) {
+                let updated = update_stock(pool, &stock, json)?;
+
+                let _ = channel.say(http, "Lmao hax").await?;
+
+                updated
+            } else {
+                stock
+            }
+        }
     };
 
     Ok(stock_entity)
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    dotenv().ok();
-    let database_url = env::var("DATABASE_URL").expect("Missing required DATABASE_URL");
+pub fn get_pool(database_url: String) -> anyhow::Result<Pool<ConnectionManager<PgConnection>>> {
     let connection_manager = ConnectionManager::<PgConnection>::new(database_url);
     let pool = Pool::builder()
         .max_size(15)
         .build(connection_manager)
         .expect("Failed to create connection pool");
 
+    Ok(pool)
+}
+
+struct Handler;
+
+impl EventHandler for Handler {}
+
+pub async fn get_discord(token: String) -> anyhow::Result<Client> {
+    let mut client = Client::builder(token).await?;
+
+    let _ = client.start();
+
+    Ok(client)
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
+    let database_url = env::var("DATABASE_URL")?;
+    let pool = get_pool(database_url)?;
+
+    let discord_token = env::var("DISCORD_TOKEN")?;
+    let discord = get_discord(discord_token).await?;
+
+    let discord_cache_and_http = discord.cache_and_http.clone();
+    let discord_http = discord_cache_and_http.http.clone();
+
+    let discord_channel = env::var("DISCORD_CHANNEL")?.parse::<u64>()?;
+    let channel = ChannelId(discord_channel);
+
     let _ = stocks(
         &pool,
         "https://www.bershka.com/itxrest/2/catalog/store/45109555/40259532/product/102872244/stock",
+        discord_http,
+        &channel,
     )
     .await?;
 

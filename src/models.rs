@@ -11,11 +11,11 @@ use serde::Deserialize;
 #[belongs_to(Stocks)]
 #[table_name = "stock"]
 pub struct Stock {
-    id: i32,
-    foreign_id: i32,
-    availability: String,
-    type_threshold: String,
-    stocks_id: Option<i32>,
+    pub id: i32,
+    pub foreign_id: i32,
+    pub availability: String,
+    pub type_threshold: String,
+    pub stocks_id: Option<i32>,
 }
 
 #[derive(Identifiable, Debug, PartialEq, Queryable)]
