@@ -21,8 +21,8 @@ pub struct Stock {
 #[derive(Identifiable, Debug, PartialEq, Queryable)]
 #[table_name = "stocks"]
 pub struct Stocks {
-    id: i32,
-    product_id: i32,
+    pub id: i32,
+    pub product_id: i32,
 }
 
 // Insertable variants
@@ -45,10 +45,10 @@ pub struct NewStocks<'a> {
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct JsonStock {
     #[serde(rename(deserialize = "id"))]
-    foreign_id: i32,
-    availability: String,
+    pub foreign_id: i32,
+    pub availability: String,
     #[serde(rename(deserialize = "typeThreshold"))]
-    type_threshold: String,
+    pub type_threshold: String,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
