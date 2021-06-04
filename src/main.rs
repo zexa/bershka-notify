@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
+extern crate job_scheduler;
 extern crate r2d2;
 extern crate reqwest;
 extern crate serde;
@@ -9,9 +10,11 @@ extern crate tokio;
 
 use crate::models::{JsonResponse, JsonStock, JsonStocks, NewStock, NewStocks, Stock, Stocks};
 use anyhow::Context;
+use chrono::{DateTime, Local};
 use diesel::prelude::*;
 use diesel::r2d2::ConnectionManager;
 use dotenv::dotenv;
+use job_scheduler::{Job, JobScheduler};
 use r2d2::Pool;
 use serenity::client::EventHandler;
 use serenity::http::Http;
@@ -19,6 +22,8 @@ use serenity::model::id::ChannelId;
 use serenity::Client;
 use std::env;
 use std::sync::Arc;
+use std::thread::sleep;
+use std::time::{Duration, SystemTime};
 
 mod models;
 mod schema;
@@ -157,7 +162,7 @@ pub async fn stock(
             if !is_stock_same(&stock, json) {
                 let updated = update_stock(pool, &stock, json)?;
 
-                let _ = channel.say(http, "Lmao hax").await?;
+                let _ = channel.say(http, "@Oggy Updated!").await?;
 
                 updated
             } else {
@@ -211,13 +216,24 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Announcing bot start")?;
 
-    let _ = stocks(
-        &pool,
-        "https://www.bershka.com/itxrest/2/catalog/store/45109555/40259532/product/102872244/stock",
-        discord_http,
-        &channel,
-    )
-    .await?;
+    let mut scheduler = JobScheduler::new();
+    scheduler.add(Job::new("0 0,5,10,15,20,25,30,35,40,45,50,55 * * * * *".parse().unwrap(), || {
+        let datetime: DateTime<Local> = SystemTime::now().into();
+        println!("Last scan at {}", datetime.format("%Y-%m-%d %T"));
+
+        let _ = stocks(
+            &pool,
+            "https://www.bershka.com/itxrest/2/catalog/store/45109555/40259532/product/102872244/stock",
+            discord_http.clone(),
+            &channel,
+        );
+    }));
+
+    loop {
+        scheduler.tick();
+
+        sleep(Duration::from_millis(1000));
+    }
 
     Ok(())
 }
